@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -111,6 +112,9 @@ type RuntimeDocker struct {
 
 	// log is the logger for this runtime.
 	log logging.Logger
+
+	// host to reach the containers
+	Host string
 }
 
 // GetDockerPullPolicy extracts PullPolicy configuration from the supplied
@@ -140,7 +144,7 @@ func GetDockerCleanup(fn pkgv1.Function) (DockerCleanup, error) {
 
 // GetRuntimeDocker extracts RuntimeDocker configuration from the supplied
 // Function.
-func GetRuntimeDocker(fn pkgv1.Function, log logging.Logger) (*RuntimeDocker, error) {
+func GetRuntimeDocker(fn pkgv1.Function, log logging.Logger, dockerHost string) (*RuntimeDocker, error) {
 	cleanup, err := GetDockerCleanup(fn)
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot get cleanup policy for Function %q", fn.GetName())
@@ -157,6 +161,7 @@ func GetRuntimeDocker(fn pkgv1.Function, log logging.Logger) (*RuntimeDocker, er
 		Name:       "",
 		Cleanup:    cleanup,
 		PullPolicy: pullPolicy,
+		Host:       dockerHost,
 		log:        log,
 	}
 	if i := fn.GetAnnotations()[AnnotationKeyRuntimeDockerImage]; i != "" {
@@ -218,7 +223,7 @@ func (r *RuntimeDocker) findContainer(ctx context.Context, cli *client.Client) (
 }
 
 func (r *RuntimeDocker) createContainer(ctx context.Context, cli *client.Client) (string, string, error) {
-	r.log.Debug("Starting Docker container runtime setup", "image", r.Image)
+	r.log.Debug("Starting Docker container runtime setup", "image", r.Image, "host", r.Host)
 	// Find a random, available port. There's a chance of a race here, where
 	// something else binds to the port before we start our container.
 
@@ -226,8 +231,14 @@ func (r *RuntimeDocker) createContainer(ctx context.Context, cli *client.Client)
 	if err != nil {
 		return "", "", errors.Wrap(err, "cannot get available TCP port")
 	}
-	containerAddr := lis.Addr().String()
+	localContainerAddr := lis.Addr().String()
 	_ = lis.Close()
+	containerPort := strings.Split(localContainerAddr, ":")[1]
+	dockerIps, err := net.LookupIP(r.Host)
+	if err != nil {
+		return "", "", errors.Wrap(err, "cannot get host IP")
+	}
+	containerAddr := fmt.Sprintf("%s:%s", dockerIps[0], containerPort)
 
 	spec := fmt.Sprintf("%s:9443/tcp", containerAddr)
 	expose, bind, err := nat.ParsePortSpecs([]string{spec})

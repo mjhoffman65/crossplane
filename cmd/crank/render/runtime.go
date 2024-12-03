@@ -63,10 +63,10 @@ type RuntimeContext struct {
 }
 
 // GetRuntime for the supplied Function, per its annotations.
-func GetRuntime(fn pkgv1.Function, log logging.Logger) (Runtime, error) {
+func GetRuntime(fn pkgv1.Function, log logging.Logger, dockerHost string) (Runtime, error) {
 	switch r := RuntimeType(fn.GetAnnotations()[AnnotationKeyRuntime]); r {
 	case AnnotationValueRuntimeDocker, "":
-		return GetRuntimeDocker(fn, log)
+		return GetRuntimeDocker(fn, log, dockerHost)
 	case AnnotationValueRuntimeDevelopment:
 		return GetRuntimeDevelopment(fn, log), nil
 	default:

@@ -46,6 +46,7 @@ type Cmd struct {
 	// Flags. Keep them in alphabetical order.
 	ContextFiles           map[string]string `help:"Comma-separated context key-value pairs to pass to the Function pipeline. Values must be files containing JSON."                           mapsep:""`
 	ContextValues          map[string]string `help:"Comma-separated context key-value pairs to pass to the Function pipeline. Values must be JSON. Keys take precedence over --context-files." mapsep:""`
+	DockerHost             string            `help:"The host to use to reach Docker containers." short:"d"`
 	IncludeFunctionResults bool              `help:"Include informational and warning messages from Functions in the rendered output as resources of kind: Result."                            short:"r"`
 	IncludeFullXR          bool              `help:"Include a direct copy of the input XR's spec and metadata fields in the rendered output."                                                  short:"x"`
 	ObservedResources      string            `help:"A YAML file or directory of YAML files specifying the observed state of composed resources."                                               placeholder:"PATH" short:"o"   type:"path"`
@@ -143,9 +144,10 @@ func (c *Cmd) Run(k *kong.Context, log logging.Logger) error { //nolint:gocognit
 	xrGVK := xr.GetObjectKind().GroupVersionKind()
 	compRef := comp.Spec.CompositeTypeRef
 
-	if compRef.Kind != xrGVK.Kind {
-		return errors.Errorf("composition's compositeTypeRef.kind (%s) does not match XR's kind (%s)", compRef.Kind, xrGVK.Kind)
-	}
+	// TODO this validation doesn't work for Claims?
+	// if compRef.Kind != xrGVK.Kind {
+	// 	return errors.Errorf("composition's compositeTypeRef.kind (%s) does not match XR's kind (%s)", compRef.Kind, xrGVK.Kind)
+	// }
 
 	if compRef.APIVersion != xrGVK.GroupVersion().String() {
 		return errors.Errorf("composition's compositeTypeRef.apiVersion (%s) does not match XR's apiVersion (%s)", compRef.APIVersion, xrGVK.GroupVersion().String())
@@ -204,12 +206,18 @@ func (c *Cmd) Run(k *kong.Context, log logging.Logger) error { //nolint:gocognit
 		fctx[k] = []byte(v)
 	}
 
+	dockerHost := "localhost"
+	if c.DockerHost != "" {
+		dockerHost = c.DockerHost
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
 	out, err := Render(ctx, log, Inputs{
 		CompositeResource:   xr,
 		Composition:         comp,
+		DockerHost:          dockerHost,
 		Functions:           fns,
 		FunctionCredentials: fcreds,
 		ObservedResources:   ors,

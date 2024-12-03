@@ -69,6 +69,7 @@ const (
 type Inputs struct {
 	CompositeResource   *ucomposite.Unstructured
 	Composition         *apiextensionsv1.Composition
+	DockerHost          string
 	Functions           []pkgv1.Function
 	FunctionCredentials []corev1.Secret
 	ObservedResources   []composed.Unstructured
@@ -102,12 +103,12 @@ type RuntimeFunctionRunner struct {
 // NewRuntimeFunctionRunner returns a FunctionRunner that runs functions
 // locally, using the runtime configured in their annotations (e.g. Docker). It
 // starts all the functions and creates gRPC connections when called.
-func NewRuntimeFunctionRunner(ctx context.Context, log logging.Logger, fns []pkgv1.Function) (*RuntimeFunctionRunner, error) {
+func NewRuntimeFunctionRunner(ctx context.Context, log logging.Logger, fns []pkgv1.Function, dockerHost string) (*RuntimeFunctionRunner, error) {
 	contexts := map[string]RuntimeContext{}
 	conns := map[string]*grpc.ClientConn{}
 
 	for _, fn := range fns {
-		runtime, err := GetRuntime(fn, log)
+		runtime, err := GetRuntime(fn, log, dockerHost)
 		if err != nil {
 			return nil, errors.Wrapf(err, "cannot get runtime for Function %q", fn.GetName())
 		}
@@ -173,7 +174,7 @@ func getSecret(name string, nameSpace string, secrets []corev1.Secret) (*corev1.
 
 // Render the desired XR and composed resources, sorted by resource name, given the supplied inputs.
 func Render(ctx context.Context, log logging.Logger, in Inputs) (Outputs, error) { //nolint:gocognit // TODO(negz): Should we refactor to break this up a bit?
-	runtimes, err := NewRuntimeFunctionRunner(ctx, log, in.Functions)
+	runtimes, err := NewRuntimeFunctionRunner(ctx, log, in.Functions, in.DockerHost)
 	if err != nil {
 		return Outputs{}, errors.Wrap(err, "cannot start function runtimes")
 	}
